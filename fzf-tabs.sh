@@ -9,6 +9,22 @@ tabs_json="$(kitten @ ls 2>&1)" || {
   exit 1
 }
 
+cols=$(tput cols)
+lines=$(tput lines)
+
+target_w=80
+target_h=20
+
+max_w=$(( cols * 80 / 100 ))
+max_h=$(( lines * 80 / 100 ))
+(( target_w > max_w )) && target_w=$max_w
+(( target_h > max_h )) && target_h=$max_h
+
+h_margin=$(( (cols - target_w) / 2 ))
+v_margin=$(( (lines - target_h) / 2 ))
+(( h_margin < 0 )) && h_margin=0
+(( v_margin < 0 )) && v_margin=0
+
 selection="$(
   printf '%s\n' "$tabs_json" | jq -r '
     .[]
@@ -33,7 +49,7 @@ selection="$(
       --pointer='▶' \
       --layout=reverse \
       --info=inline-right \
-      --margin=35%,38% \
+      --margin="${v_margin},${h_margin}" \
       --border=rounded \
       --border-label=' Tabs ' \
       --border-label-pos=2 \
