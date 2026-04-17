@@ -29,15 +29,18 @@ selection="$(
   printf '%s\n' "$tabs_json" | jq -r '
     .[]
     | select(.is_focused)
-    | .tabs[]
+    | .tabs
+    | to_entries[]
+    | .key as $i
+    | .value as $t
     | [
-        (.id | tostring),
-        (((.windows[]? | select(.is_focused) | .id) // 0) | tostring),
+        ($t.id | tostring),
+        ((($t.windows[]? | select(.is_focused) | .id) // 0) | tostring),
         (
-          (if .is_focused then "*" else " " end)
-          + " " + (.id | tostring)
-          + "  " + .title
-          + "  " + ((.windows[]? | select(.is_focused) | .cwd) // "")
+          (if $t.is_focused then "*" else " " end)
+          + " " + (($i + 1) | tostring)
+          + "  " + $t.title
+          + "  " + (($t.windows[]? | select(.is_focused) | .cwd) // "")
         )
       ]
     | @tsv
