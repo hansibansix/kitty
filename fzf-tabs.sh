@@ -12,10 +12,25 @@ tabs_json="$(kitten @ ls 2>&1)" || {
 cols=$(tput cols)
 lines=$(tput lines)
 
-target_w=80
+# Measure actual content widths (title + cwd) so the window hugs the content.
+read -r tw cw nw <<<"$(printf '%s\n' "$tabs_json" | jq -r \
+  --arg HOME "$HOME" --argjson cwin "${KITTY_WINDOW_ID:-0}" '
+  [.[] | select(.is_focused) | .tabs[]
+   | select([.windows[].id] | index($cwin) | not)] as $tabs
+  | ($tabs | to_entries) as $rows
+  | ([$rows[] | (.value.title // "") | if length > 60 then 60 else length end] | max // 0) as $tw
+  | ([$rows[]
+      | ((.value.windows[]? | select(.is_focused) | .cwd) // "")
+      | if startswith($HOME) then "~" + .[($HOME | length):] else . end
+      | length] | max // 0) as $cw
+  | ([$rows[] | ((.key + 1) | tostring | length)] | max // 1) as $nw
+  | "\($tw) \($cw) \($nw)"
+')"
+# Fixed overhead: pointer, border, padding, separators + a small buffer for fzf chrome
+target_w=$(( 30 + tw + cw + nw ))
 target_h=20
 
-max_w=$(( cols * 80 / 100 ))
+max_w=$(( cols - 4 ))
 max_h=$(( lines * 80 / 100 ))
 (( target_w > max_w )) && target_w=$max_w
 (( target_h > max_h )) && target_h=$max_h
@@ -40,22 +55,24 @@ selection="$(
     --arg RESET "$RESET" --arg BOLD "$BOLD" --arg ITALIC "$ITALIC" \
     --arg TEXT "$TEXT" --arg MUTED "$MUTED" --arg GREEN "$GREEN" \
     --arg PEACH "$PEACH" --arg BLUE "$BLUE" \
-    --arg HOME "$HOME" '
-    .[]
-    | select(.is_focused)
-    | .tabs
-    | to_entries[]
+    --arg HOME "$HOME" \
+    --argjson cwin "${KITTY_WINDOW_ID:-0}" '
+    [.[] | select(.is_focused) | .tabs[]
+     | select([.windows[].id] | index($cwin) | not)] as $tabs
+    | ($tabs | to_entries) as $rows
+    | ([$rows[] | (.value.title // "") | if length > 60 then 60 else length end] | max) as $tw
+    | $rows[]
     | .key as $i
     | .value as $t
     | (if $t.is_focused then $GREEN + "●" + $RESET else " " end) as $dot
-    | (($t.title // "") | if length > 40 then .[0:39] + "…" else . end) as $title
+    | (($t.title // "") | if length > 60 then .[0:59] + "…" else . end) as $title0
+    | ($title0 + (" " * ($tw - ($title0 | length)))) as $title
     | ((($t.windows[]? | select(.is_focused) | .cwd) // "")
-       | if startswith($HOME) then "~" + .[($HOME | length):] else . end
-       | if length > 40 then "…" + .[-39:] else . end) as $cwd
+       | if startswith($HOME) then "~" + .[($HOME | length):] else . end) as $cwd
     | [
         ($t.id | tostring),
         ((($t.windows[]? | select(.is_focused) | .id) // 0) | tostring),
-        "\($dot)  \($PEACH)\($BOLD)\(($i + 1) | tostring)\($RESET)  \($MUTED)│\($RESET)  \($BOLD)\($TEXT)\($title)\($RESET)  \($MUTED)·\($RESET)  \($BLUE)\($ITALIC)\($cwd)\($RESET)"
+        "\($dot)  \($PEACH)\($BOLD)\(($i + 1) | tostring)\($RESET)  \($MUTED)│\($RESET)  \($BOLD)\($TEXT)\($title)\($RESET)    \($MUTED)·\($RESET)    \($BLUE)\($ITALIC)\($cwd)\($RESET)"
       ]
     | @tsv
   ' | fzf \
